@@ -1,0 +1,127 @@
+plugins {
+    id 'java'
+    id 'org.jetbrains.gradle.plugin.idea-ext' version '1.3'
+    id 'org.jetbrains.kotlin.jvm' version '1.9.22'
+}
+
+ext {
+    hytaleHome = "${System.getProperty("user.home")}/AppData/Roaming/Hytale"
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(java_version)
+    withSourcesJar()
+    withJavadocJar()
+}
+
+// Quiet warnings about missing Javadocs.
+javadoc {
+    options.addStringOption('Xdoclint:-missing', '-quiet')
+}
+
+// Adds the Hytale server as a build dependency, allowing you to reference and
+// compile against their code. This requires you to have Hytale installed using
+// the official launcher for now.
+dependencies {
+    compileOnly("me.xcue:hylib:${project.property("hylib.version")}")
+    compileOnly(files("$hytaleHome/install/$patchline/package/game/latest/Server/HytaleServer.jar"))
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
+}
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+}
+
+// Create the working directory to run the server if it does not already exist.
+def serverRunDir = file("$projectDir/run")
+if (!serverRunDir.exists()) {
+    serverRunDir.mkdirs()
+}
+
+// Updates the manifest.json file with the latest properties defined in the
+// build.properties file. Currently we update the version and if packs are
+// included with the plugin.
+tasks.register('updatePluginManifest') {
+    def manifestFile = file('src/main/resources/manifest.json')
+    doLast {
+        if (!manifestFile.exists()) {
+            throw new GradleException("Could not find manifest.json at ${manifestFile.path}!")
+        }
+        def manifestJson = new groovy.json.JsonSlurper().parseText(manifestFile.text)
+        manifestJson.Version = version
+        manifestJson.IncludesAssetPack = includes_pack.toBoolean()
+        manifestFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(manifestJson))
+    }
+}
+
+// Makes sure the plugin manifest is up to date.
+tasks.named('processResources') {
+    dependsOn 'updatePluginManifest'
+}
+
+// Creates a run configuration in IDEA that will run the Hytale server with
+// your plugin and the default assets.
+idea.project.settings.runConfigurations {
+    'HytaleServer'(org.jetbrains.gradle.ext.Application) {
+        mainClass = 'com.hypixel.hytale.Main'
+        moduleName = project.idea.module.name + '.main'
+        programParameters = "--allow-op --assets=$hytaleHome/install/$patchline/package/game/latest/Assets.zip"
+        if (includes_pack.toBoolean()) {
+            programParameters += " --mods=${sourceSets.main.java.srcDirs.first().parentFile.absolutePath}"
+        }
+        if (load_user_mods.toBoolean()) {
+            programParameters += " --mods=$hytaleHome/UserData/Mods"
+        }
+        workingDirectory = serverRunDir.absolutePath
+    }
+}
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions {
+        jvmTarget = "21"
+    }
+}
+
+tasks.withType(Javadoc).configureEach {
+    onlyIf { fileTree("src/main/java").matching { include("**/*.java") }.files.size() > 0 }
+}
+
+tasks.named('javadoc') {
+    enabled = false
+}
+
+tasks.withType(Jar).configureEach {
+    it.archiveBaseName = rootProject.name.toLowerCase()
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ["src/main/java", "src/main/kotlin"]
+        }
+        resources {
+            srcDirs = ["src/main/resources"]
+            exclude ".idea/**"
+        }
+    }
+    test {
+        java {
+            srcDirs = ["src/test/java", "src/test/kotlin"]
+        }
+        resources {
+            srcDirs = ["src/test/resources"]
+            exclude ".idea/**"
+        }
+    }
+}
+
+// Remove custom fatJar and revert to standard jar task
+// Only include kotlin-stdlib in the JAR if needed
+jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from {
+        configurations.runtimeClasspath.findAll { it.name.startsWith('kotlin-stdlib') }.collect { zipTree(it) }
+    }
+    exclude ".idea/**"
+}

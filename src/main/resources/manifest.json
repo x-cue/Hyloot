@@ -1,0 +1,22 @@
+{
+    "Group": "xCue",
+    "Name": "TestMod",
+    "Main": "me.xcue.mod.TestMod",
+    "Version": "0.0.2",
+    "Description": "Hytale mod in Kotlin!",
+    "Authors": [
+        {
+            "Name": "xcue"
+        }
+    ],
+    "Website": "example.com",
+    "ServerVersion": "*",
+    "Dependencies": {
+        
+    },
+    "OptionalDependencies": {
+        
+    },
+    "DisabledByDefault": false,
+    "IncludesAssetPack": true
+}
