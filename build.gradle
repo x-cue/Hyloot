@@ -4,8 +4,18 @@ plugins {
     id 'org.jetbrains.kotlin.jvm' version '1.9.22'
 }
 
+import org.gradle.internal.os.OperatingSystem
 ext {
-    hytaleHome = "${System.getProperty("user.home")}/AppData/Roaming/Hytale"
+    def os = OperatingSystem.current()
+
+    if (os.isMacOsX()) {
+        hytaleHome = "${System.getProperty("user.home")}/Library/Application Support/Hytale"
+    } else if (os.isWindows()) {
+        hytaleHome = "${System.getProperty("user.home")}/AppData/Roaming/Hytale"
+    } else {
+        println("Unsupported OS detected!")
+    }
+
 }
 
 java {
