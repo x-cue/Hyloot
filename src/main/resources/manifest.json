@@ -1,9 +1,9 @@
 {
-    "Group": "xCue",
-    "Name": "TestMod",
-    "Main": "me.xcue.mod.TestMod",
-    "Version": "0.0.2",
-    "Description": "Hytale mod in Kotlin!",
+    "Group": "xcue",
+    "Name": "Hyloot",
+    "Main": "me.xcue.hyloot.Hyloot",
+    "Version": "0.0.0",
+    "Description": "This mod enables naturally spawning chests to provide player-instanced loot so everyone can benefit from them!",
     "Authors": [
         {
             "Name": "xcue"
@@ -12,11 +12,11 @@
     "Website": "example.com",
     "ServerVersion": "*",
     "Dependencies": {
-        
+        "xcue:Hylib": "^26.0.0"
     },
     "OptionalDependencies": {
         
     },
     "DisabledByDefault": false,
-    "IncludesAssetPack": true
+    "IncludesAssetPack": false
 }
