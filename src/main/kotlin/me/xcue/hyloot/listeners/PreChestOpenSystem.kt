@@ -5,6 +5,8 @@ import com.google.gson.GsonBuilder
 import com.hypixel.hytale.component.ArchetypeChunk
 import com.hypixel.hytale.component.CommandBuffer
 import com.hypixel.hytale.component.Component
+import com.hypixel.hytale.component.ComponentAccessor
+import com.hypixel.hytale.component.Ref
 import com.hypixel.hytale.component.Store
 import com.hypixel.hytale.component.query.Query
 import com.hypixel.hytale.component.system.EntityEventSystem
@@ -24,12 +26,18 @@ import com.hypixel.hytale.server.core.inventory.container.ItemContainerUtil
 import com.hypixel.hytale.server.core.inventory.container.ItemStackItemContainer
 import com.hypixel.hytale.server.core.inventory.transaction.SlotTransaction
 import com.hypixel.hytale.server.core.universe.PlayerRef
+import com.hypixel.hytale.server.core.universe.Universe
 import com.hypixel.hytale.server.core.universe.world.meta.state.ItemContainerState
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
 import com.hypixel.hytale.server.npc.corecomponents.items.ActionPickUpItem
 import com.hypixel.hytale.server.npc.util.InventoryHelper
 
 class PreChestOpenSystem : EntityEventSystem<EntityStore, UseBlockEvent.Pre>(UseBlockEvent.Pre::class.java) {
+    companion object {
+        private val DENIED_INTERACTION_TYPES = listOf(InteractionType.Primary)
+        private val AFFECTED_WORLDS = listOf("resources")
+    }
+
     override fun handle(
         p0: Int,
         p1: ArchetypeChunk<EntityStore?>,
@@ -37,45 +45,70 @@ class PreChestOpenSystem : EntityEventSystem<EntityStore, UseBlockEvent.Pre>(Use
         p3: CommandBuffer<EntityStore?>,
         p4: UseBlockEvent.Pre
     ) {
-        onPre(p4)
+        onPre(p4, p3)
     }
 
-    fun onPre(e: UseBlockEvent.Pre) {
+    fun onPre(e: UseBlockEvent.Pre, buffer: CommandBuffer<EntityStore?>) {
         val pos = e.targetBlock
         val blockType = e.blockType
         val interactionType = e.interactionType
-        val ctx = e.context
-
-        if (interactionType != InteractionType.Use) return
-        if (!isContainer(blockType)) return
-
-
         val ref = e.context.entity
         val player = ref.store.getComponent(ref, Player.getComponentType()) ?: return
-        debugBlock(blockType, player)
 
-        println(blockType.state)
-        println("Container data: " + blockType.data.containerData)
-        println("Container data: " + blockType.data)
-//        WorldChunk worldChunk = world.getChunkIfInMemory(ChunkUtil.indexChunkFromBlock(blockX, blockZ));
-//        (ItemContainerState)worldChunk.getState(x, y, z);
+        if (!AFFECTED_WORLDS.contains(player.world?.name)) {
+            return
+        }
 
+        if (!isContainer(blockType)) return
+        // Cancel breaking it
+        if (interactionType != InteractionType.Use) {
+            if (DENIED_INTERACTION_TYPES.contains(interactionType)) {
+                e.isCancelled = true
+                player.sendMessage(Message.raw("You cannot do that."))
+            }
+            return
+        }
+
+//        debugBlock(blockType, player)
+
+        e.isCancelled = true
+
+        if (canLootContainer(pos, ref, player)) {
+            lootContainer(pos, ref, player, buffer)
+        } else {
+            player.sendMessage(Message.raw("You have already looted that container."))
+        }
+    }
+
+    private fun canLootContainer(pos: Vector3i, ref: Ref<EntityStore>, player: Player): Boolean {
+        // TODO Check some kind of store...
+        return true
+    }
+
+    private fun lootContainer(
+        pos: Vector3i,
+        ref: Ref<EntityStore>,
+        player: Player,
+        buffer: CommandBuffer<EntityStore?>
+    ) {
+        // TODO update store saying the player HAS looted it now...
         val chunk = player.world?.getChunkIfInMemory(ChunkUtil.indexChunkFromBlock(pos.x, pos.z)) ?: return
         val contents = chunk.getState(pos.x, pos.y, pos.z) as ItemContainerState
+        val inv = player.inventory.storage
 
+        val finalCont = contents.itemContainer.clone()
+        contents.itemContainer.forEach { slot, stack ->
+            if (inv.canAddItemStack(stack)) {
+                inv.addItemStack(stack)
+                player.notifyPickupItem(ref, stack, pos.toVector3d(), buffer)
+                finalCont.removeItemStackFromSlot(slot)
+            }
+        }
 
-//        println("Container data: " + blockType.data.)
-
-        val blockStore = player.world?.getBlockComponentHolder(pos.x, pos.y, pos.z) ?: return
-
-        // Damage is POSITIVE - To HEAL need to use NEGATIVE value
-//        float amount = 20.0f; // damage amount
-//        Damage damage = new Damage(Damage.NULL_SOURCE, DamageCause.PHYSICAL, amount);
-//        DamageSystems.executeDamage(player.getReference(), store, damage);
-
-
-//        player.sendMessage(Message.raw("prefablistassetid: " + e.blockType.))
-
+        if (!finalCont.isEmpty) {
+            // Drop remaining
+            finalCont.dropAllItemStacks()
+        }
     }
 
     private fun isContainer(blockType: BlockType): Boolean {
