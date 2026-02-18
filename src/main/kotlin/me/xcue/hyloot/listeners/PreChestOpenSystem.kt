@@ -26,8 +26,6 @@ class PreChestOpenSystem : EntityEventSystem<EntityStore, UseBlockEvent.Pre>(Use
         private val WORLD_STORAGE = mutableMapOf<UUID, HylootChestStorage>()
     }
 
-    private val locationsAboutToBreak = mutableListOf<Vector3i>()
-
     override fun handle(
         p0: Int,
         p1: ArchetypeChunk<EntityStore?>,
@@ -54,7 +52,7 @@ class PreChestOpenSystem : EntityEventSystem<EntityStore, UseBlockEvent.Pre>(Use
         // Cancel breaking it
         if (interactionType != InteractionType.Use) {
             if (interactionType == InteractionType.Primary) {
-                locationsAboutToBreak.add(pos)
+                playerRef.sendMessage(Message.raw("You cannot break containers in this world."))
                 e.isCancelled = true
             }
             return
@@ -137,11 +135,5 @@ class PreChestOpenSystem : EntityEventSystem<EntityStore, UseBlockEvent.Pre>(Use
         player.sendMessage(Message.raw("block iType?: " + blockType.interactionHitboxType));
         player.sendMessage(Message.raw("block is trigger?: " + blockType.isTrigger));
         player.sendMessage(Message.raw("prefablistassetid: " + blockType.prefabListAssetId))
-    }
-
-    fun preventBlockBreak(e: BreakBlockEvent) {
-        if (locationsAboutToBreak.contains(e.targetBlock)) {
-            e.isCancelled = true
-        }
     }
 }
