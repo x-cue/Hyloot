@@ -1,42 +1,32 @@
 package me.xcue.hyloot.listeners
 
-import com.google.gson.Gson
-import com.google.gson.GsonBuilder
 import com.hypixel.hytale.component.ArchetypeChunk
 import com.hypixel.hytale.component.CommandBuffer
-import com.hypixel.hytale.component.Component
-import com.hypixel.hytale.component.ComponentAccessor
 import com.hypixel.hytale.component.Ref
 import com.hypixel.hytale.component.Store
 import com.hypixel.hytale.component.query.Query
 import com.hypixel.hytale.component.system.EntityEventSystem
 import com.hypixel.hytale.math.util.ChunkUtil
 import com.hypixel.hytale.math.vector.Vector3i
-import com.hypixel.hytale.protocol.BlockFlags
 import com.hypixel.hytale.protocol.InteractionType
-import com.hypixel.hytale.protocol.packets.asseteditor.AssetInfo
 import com.hypixel.hytale.server.core.Message
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType
-import com.hypixel.hytale.server.core.asset.type.item.config.ItemStackContainerConfig
 import com.hypixel.hytale.server.core.entity.entities.Player
+import com.hypixel.hytale.server.core.event.events.ecs.BreakBlockEvent
 import com.hypixel.hytale.server.core.event.events.ecs.UseBlockEvent
-import com.hypixel.hytale.server.core.inventory.Inventory
-import com.hypixel.hytale.server.core.inventory.container.ItemContainer
-import com.hypixel.hytale.server.core.inventory.container.ItemContainerUtil
-import com.hypixel.hytale.server.core.inventory.container.ItemStackItemContainer
-import com.hypixel.hytale.server.core.inventory.transaction.SlotTransaction
 import com.hypixel.hytale.server.core.universe.PlayerRef
-import com.hypixel.hytale.server.core.universe.Universe
 import com.hypixel.hytale.server.core.universe.world.meta.state.ItemContainerState
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
-import com.hypixel.hytale.server.npc.corecomponents.items.ActionPickUpItem
-import com.hypixel.hytale.server.npc.util.InventoryHelper
+import me.xcue.hyloot.Hyloot
+import me.xcue.hyloot.components.HylootChestStorage
+import java.util.UUID
 
 class PreChestOpenSystem : EntityEventSystem<EntityStore, UseBlockEvent.Pre>(UseBlockEvent.Pre::class.java) {
     companion object {
-        private val DENIED_INTERACTION_TYPES = listOf(InteractionType.Primary)
-        private val AFFECTED_WORLDS = listOf("resources")
+        private val WORLD_STORAGE = mutableMapOf<UUID, HylootChestStorage>()
     }
+
+    private val locationsAboutToBreak = mutableListOf<Vector3i>()
 
     override fun handle(
         p0: Int,
@@ -54,17 +44,18 @@ class PreChestOpenSystem : EntityEventSystem<EntityStore, UseBlockEvent.Pre>(Use
         val interactionType = e.interactionType
         val ref = e.context.entity
         val player = ref.store.getComponent(ref, Player.getComponentType()) ?: return
+        val playerRef = ref.store.getComponent(ref, PlayerRef.getComponentType()) ?: return
 
-        if (!AFFECTED_WORLDS.contains(player.world?.name)) {
+        if (!Hyloot.AFFECTED_WORLDS.contains(player.world?.name)) {
             return
         }
 
         if (!isContainer(blockType)) return
         // Cancel breaking it
         if (interactionType != InteractionType.Use) {
-            if (DENIED_INTERACTION_TYPES.contains(interactionType)) {
+            if (interactionType == InteractionType.Primary) {
+                locationsAboutToBreak.add(pos)
                 e.isCancelled = true
-                player.sendMessage(Message.raw("You cannot do that."))
             }
             return
         }
@@ -73,25 +64,37 @@ class PreChestOpenSystem : EntityEventSystem<EntityStore, UseBlockEvent.Pre>(Use
 
         e.isCancelled = true
 
-        if (canLootContainer(pos, ref, player)) {
-            lootContainer(pos, ref, player, buffer)
+
+        if (canLootContainer(pos, playerRef)) {
+            lootContainer(pos, ref, player, playerRef, buffer)
         } else {
             player.sendMessage(Message.raw("You have already looted that container."))
         }
     }
 
-    private fun canLootContainer(pos: Vector3i, ref: Ref<EntityStore>, player: Player): Boolean {
-        // TODO Check some kind of store...
-        return true
+    private fun getWorldStore(ref: PlayerRef): HylootChestStorage? {
+        val worldUuid = ref.worldUuid ?: return null
+
+        return WORLD_STORAGE[worldUuid] ?: HylootChestStorage(worldUuid).also {
+            it.load()
+        }
+    }
+
+    private fun canLootContainer(pos: Vector3i, ref: PlayerRef): Boolean {
+        val store = getWorldStore(ref) ?: return false
+        return !store.hasLooted(pos, ref.uuid)
     }
 
     private fun lootContainer(
         pos: Vector3i,
         ref: Ref<EntityStore>,
         player: Player,
+        playerRef: PlayerRef,
         buffer: CommandBuffer<EntityStore?>
     ) {
-        // TODO update store saying the player HAS looted it now...
+        val store = getWorldStore(playerRef) ?: return
+        store.markLooted(pos, playerRef.uuid)
+
         val chunk = player.world?.getChunkIfInMemory(ChunkUtil.indexChunkFromBlock(pos.x, pos.z)) ?: return
         val contents = chunk.getState(pos.x, pos.y, pos.z) as ItemContainerState
         val inv = player.inventory.storage
@@ -109,9 +112,11 @@ class PreChestOpenSystem : EntityEventSystem<EntityStore, UseBlockEvent.Pre>(Use
             // Drop remaining
             finalCont.dropAllItemStacks()
         }
+
+        store.save()
     }
 
-    private fun isContainer(blockType: BlockType): Boolean {
+    fun isContainer(blockType: BlockType): Boolean {
         return blockType.state?.id == "container"
     }
 
@@ -132,5 +137,11 @@ class PreChestOpenSystem : EntityEventSystem<EntityStore, UseBlockEvent.Pre>(Use
         player.sendMessage(Message.raw("block iType?: " + blockType.interactionHitboxType));
         player.sendMessage(Message.raw("block is trigger?: " + blockType.isTrigger));
         player.sendMessage(Message.raw("prefablistassetid: " + blockType.prefabListAssetId))
+    }
+
+    fun preventBlockBreak(e: BreakBlockEvent) {
+        if (locationsAboutToBreak.contains(e.targetBlock)) {
+            e.isCancelled = true
+        }
     }
 }

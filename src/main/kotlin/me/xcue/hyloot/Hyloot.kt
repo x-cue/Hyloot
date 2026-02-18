@@ -1,9 +1,10 @@
 package me.xcue.hyloot
 
 import com.hypixel.hytale.logger.HytaleLogger
-import com.hypixel.hytale.server.core.event.events.ecs.UseBlockEvent
+import com.hypixel.hytale.server.core.event.events.ecs.BreakBlockEvent
 import com.hypixel.hytale.server.core.plugin.JavaPlugin
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit
+import me.xcue.hyloot.listeners.ChestBreakSystem
 import me.xcue.hyloot.listeners.PreChestOpenSystem
 
 /* This is the main class: the entry point for your plugin.
@@ -13,40 +14,19 @@ import me.xcue.hyloot.listeners.PreChestOpenSystem
 class Hyloot(init: JavaPluginInit) : JavaPlugin(init) {
     companion object {
         private val LOGGER: HytaleLogger = HytaleLogger.forEnclosingClass()
+        lateinit var instance: Hyloot
+        val AFFECTED_WORLDS = listOf("resources")
     }
 
     init {
         LOGGER.atInfo().log("Hello from ${this.name} version ${this.manifest.version}")
+        instance = this
     }
 
     override fun setup() {
-//       entityStoreRegistry.registerSystem(ChestOpenListener())
-       entityStoreRegistry.registerSystem(PreChestOpenSystem())
-
-
-
-//        eventRegistry.register(UseBlockEvent.Post::class.java) {
-//            println("POST")
-//            val p = it.context.entity.store.getComponent(it.context.entity, Player.getComponentType()) ?: return@register
-//            val world = p.world ?: return@register
-//
-//            val blockType = world.getBlockType(it.targetBlock)
-//            p.sendMessage(Message.raw("Yuhhh"))
-//            p.sendMessage(Message.raw("World: " + world.name))
-//            p.sendMessage(Message.raw("$blockType"))
-//        }
-//
-//        eventRegistry.register(UseBlockEvent.Pre::class.java) {
-//            println("PRE")
-//            val p = it.context.entity.store.getComponent(it.context.entity, Player.getComponentType()) ?: return@register
-//            val world = p.world ?: return@register
-//
-//            val blockType = world.getBlockType(it.targetBlock)
-//            p.sendMessage(Message.raw("Yuhhh"))
-//            p.sendMessage(Message.raw("World: " + world.name))
-//            p.sendMessage(Message.raw("$blockType"))
-//            // TODO detect if specifically a chest block
-//        }
+        val chestOpenSystem = PreChestOpenSystem()
+        entityStoreRegistry.registerSystem(chestOpenSystem)
+        entityStoreRegistry.registerSystem(ChestBreakSystem(chestOpenSystem::isContainer))
     }
 }
 
